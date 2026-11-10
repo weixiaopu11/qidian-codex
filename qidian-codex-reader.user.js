@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         起点读书 · Codex 阅读器
 // @namespace    https://www.qidian.com/
-// @version      0.2.1
+// @version      0.2.2
 // @description  把起点章节页伪装成 Codex 桌面端工作界面（左侧会话列表 / 中间正文 / 底部输入框），点击段落可在右侧查看批注。
 // @author       you
 // @match        https://www.qidian.com/chapter/*
@@ -1942,8 +1942,34 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
     loadSummary();
   }
 
-  if (CHAPTER_RE.test(location.pathname) && !/[?&]cxq=off/.test(location.search)) {
-    boot();
+  // 关闭伪装后留一个恢复入口，避免 ?cxq=off 一直粘在地址栏里回不来
+  function renderRestoreHint() {
+    if (document.getElementById("cxq-restore")) return;
+    const btn = document.createElement("button");
+    btn.id = "cxq-restore";
+    btn.textContent = "恢复 Codex 外观";
+    btn.style.cssText =
+      "position:fixed;right:16px;bottom:16px;z-index:2147483647;padding:8px 14px;border-radius:999px;" +
+      "border:1px solid rgba(0,0,0,.12);background:#fff;color:#1b1c1e;cursor:pointer;opacity:.6;" +
+      "font:12.5px/1.4 -apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;" +
+      "box-shadow:0 8px 24px rgba(0,0,0,.16);transition:opacity .18s;";
+    btn.addEventListener("mouseenter", () => { btn.style.opacity = "1"; });
+    btn.addEventListener("mouseleave", () => { btn.style.opacity = ".6"; });
+    btn.addEventListener("click", () => {
+      const u = new URL(location.href);
+      u.searchParams.delete("cxq");
+      location.href = u.pathname + (u.search || "") + (u.hash || "");
+    });
+    document.body.appendChild(btn);
+  }
+
+  if (CHAPTER_RE.test(location.pathname)) {
+    if (/[?&]cxq=off/.test(location.search)) {
+      if (document.body) renderRestoreHint();
+      else window.addEventListener("DOMContentLoaded", renderRestoreHint);
+    } else {
+      boot();
+    }
   }
 
   window.__CXQ__ = state;
