@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         起点读书 · Codex 阅读器
 // @namespace    https://www.qidian.com/
-// @version      0.1.0
+// @version      0.2.0
 // @description  把起点章节页伪装成 Codex 桌面端工作界面（左侧会话列表 / 中间正文 / 底部输入框），点击段落可在右侧查看批注。
 // @author       you
 // @match        https://www.qidian.com/chapter/*
@@ -467,6 +467,26 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
 #${ROOT_ID} .cxq-reply-toggle{margin-top:2px;padding:1px 0;font-size:11.5px;color:var(--cx-blue);opacity:.85;}
 #${ROOT_ID} .cxq-reply-toggle:hover{opacity:1;}
 #${ROOT_ID} .cxq-reply-empty{padding:3px 0;font-size:11.5px;color:var(--cx-text-faint);}
+
+/* 评论配图 */
+#${ROOT_ID} .cxq-cm-imgs{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+#${ROOT_ID} .cxq-thumb{
+  width:56px;height:56px;flex:none;padding:0;overflow:hidden;
+  border-radius:6px;border:1px solid var(--cx-border);background:var(--cx-chip-bg);
+  cursor:zoom-in;transition:border-color .15s;
+}
+#${ROOT_ID} .cxq-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+#${ROOT_ID} .cxq-thumb:hover{border-color:var(--cx-border-strong);}
+#${ROOT_ID} .cxq-lightbox{
+  position:absolute;inset:0;z-index:2147483600;display:none;
+  align-items:center;justify-content:center;padding:40px;
+  background:rgba(0,0,0,.82);cursor:zoom-out;
+}
+#${ROOT_ID} .cxq-lightbox.open{display:flex;}
+#${ROOT_ID} .cxq-lightbox img{
+  max-width:92vw;max-height:86vh;border-radius:10px;
+  box-shadow:0 24px 64px rgba(0,0,0,.5);object-fit:contain;
+}
 #${ROOT_ID} .cxq-load-more{
   width:100%;height:30px;margin:12px 0 4px;border-radius:8px;
   border:1px solid var(--cx-border);background:var(--cx-bg-raised);
@@ -970,6 +990,7 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
   </div>
 </aside>
 
+<div class="cxq-lightbox" id="cxq-lightbox"><img alt=""></div>
 <div class="cxq-toast" id="cxq-toast"></div>`;
   }
 
@@ -1133,6 +1154,18 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
       });
     }
 
+    // 缩略图 → 大图预览
+    root.addEventListener("click", (e) => {
+      const thumb = e.target.closest(".cxq-thumb");
+      if (thumb) {
+        e.preventDefault();
+        e.stopPropagation();
+        openLightbox(thumb.dataset.src);
+        return;
+      }
+      if (e.target.closest("#cxq-lightbox")) closeLightbox();
+    });
+
     // 假输入框：能打字、能回车清空，但不会真的发出去
     const input = state.els.input;
     if (input) {
@@ -1159,6 +1192,12 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
     const tag = (e.target && e.target.tagName) || "";
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (e.target && e.target.isContentEditable)) return;
     if (e.key === "Escape") {
+      if (state.root.querySelector("#cxq-lightbox.open")) {
+        closeLightbox();
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (state.root.classList.contains("panel-open")) {
         closePanel();
         e.preventDefault();
@@ -1207,6 +1246,23 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
     $$("#cxq-hot-list .cxq-rail-sub", state.root).forEach((n) => {
       n.classList.toggle("active", Number(n.dataset.idx) === i);
     });
+  }
+
+  function openLightbox(src) {
+    if (!src) return;
+    const box = state.root.querySelector("#cxq-lightbox");
+    if (!box) return;
+    const img = box.querySelector("img");
+    if (img) img.src = src;
+    box.classList.add("open");
+  }
+
+  function closeLightbox() {
+    const box = state.root && state.root.querySelector("#cxq-lightbox");
+    if (!box || !box.classList.contains("open")) return;
+    box.classList.remove("open");
+    const img = box.querySelector("img");
+    if (img) img.src = "";
   }
 
   function syncPanelBtn() {
@@ -1412,9 +1468,67 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
       <button class="cxq-reply-toggle" data-key="${escapeHtml(key)}" data-idx="${idx}">展开 ${count} 条回复</button>`;
   }
 
+  /* ---- 评论配图 ---- */
+
+  // 从 <img> 里抽图，同时把 HTML 洗成纯文本（有些接口 content 带 <br>/<p>）
+  function cleanContent(raw) {
+    let s = String(raw ?? "");
+    const imgs = [];
+    s = s.replace(/<img\b[^>]*>/gi, (tag) => {
+      const m = tag.match(/\bsrc\s*=\s*["']([^"']+)["']/i) || tag.match(/\bdata-src\s*=\s*["']([^"']+)["']/i);
+      if (m && m[1]) imgs.push(m[1]);
+      return "";
+    });
+    s = s.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div)>/gi, "\n").replace(/<[^>]+>/g, "");
+    s = s
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/gi, "&");
+    return { text: s.replace(/\n{3,}/g, "\n\n").trim(), imgs };
+  }
+
+  const IMG_FIELDS = ["imageList", "images", "imgList", "imageUrls", "picList", "pics", "picUrls", "attachmentList", "files"];
+
+  function collectImages(o) {
+    const out = [];
+    IMG_FIELDS.forEach((k) => {
+      asArray(o && o[k]).forEach((it) => {
+        if (typeof it === "string") {
+          if (/^(https?:)?\/\//.test(it) || it.startsWith("data:")) out.push(it);
+        } else if (it && typeof it === "object") {
+          const u = it.url || it.src || it.imageUrl || it.imgUrl || it.picUrl || it.path || it.image || "";
+          if (typeof u === "string" && u) out.push(u);
+        }
+      });
+    });
+    return out;
+  }
+
+  function imageSet(o) {
+    const { text, imgs } = cleanContent(o.content || o.text || "");
+    const all = imgs.concat(collectImages(o)).filter(Boolean);
+    return { text, imgs: Array.from(new Set(all)).slice(0, 9) };
+  }
+
+  function thumbsHtml(imgs) {
+    if (!imgs || !imgs.length) return "";
+    return `<div class="cxq-cm-imgs">${imgs
+      .map(
+        (u) =>
+          `<button class="cxq-thumb" data-src="${escapeHtml(u)}" type="button"><img src="${escapeHtml(
+            u
+          )}" alt="" loading="lazy"></button>`
+      )
+      .join("")}</div>`;
+  }
+
   function replyHtml(r) {
     const nick = escapeHtml(r.nickName || r.userName || "书友");
-    const content = escapeHtml(r.content || r.text || "").replace(/\n/g, "<br>");
+    const { text, imgs } = imageSet(r);
+    const content = escapeHtml(text).replace(/\n/g, "<br>");
     const to = r.quoteNickName || r.replyNickName || r.toNickName || (r.quoteReview && r.quoteReview.nickName) || "";
     const time = formatTime(r.createTime || r.time || r.createdAt);
     const avatar = r.avatar || r.avatarUrl || "";
@@ -1429,7 +1543,8 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
       ${to ? `<span class="cxq-reply-to">回复 ${escapeHtml(to)}</span>` : ""}
       ${time ? `<span class="cxq-reply-time">${escapeHtml(time)}</span>` : ""}
     </div>
-    <div class="cxq-reply-text">${content}</div>
+    ${content ? `<div class="cxq-reply-text">${content}</div>` : ""}
+    ${thumbsHtml(imgs)}
   </div>
 </div>`;
   }
@@ -1584,7 +1699,8 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
     const time = formatTime(cm.createTime || cm.time || cm.createdAt);
     const ip = cm.ipAddress || cm.ip || "";
     const likes = cm.likeCount != null ? Number(cm.likeCount) : 0;
-    const content = escapeHtml(cm.content || cm.text || "").replace(/\n/g, "<br>");
+    const { text, imgs } = imageSet(cm);
+    const content = escapeHtml(text).replace(/\n/g, "<br>");
 
     const avInner = avatar
       ? `<img src="${escapeHtml(avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">`
@@ -1598,7 +1714,8 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
       ${userLevel ? `<span class="cxq-cm-lv">${escapeHtml(userLevel)}</span>` : ""}
       ${floor ? `<span class="cxq-cm-floor">${escapeHtml(floor)}</span>` : ""}
     </div>
-    <div class="cxq-cm-text">${content}</div>
+    ${content ? `<div class="cxq-cm-text">${content}</div>` : ""}
+    ${thumbsHtml(imgs)}
     <div class="cxq-cm-foot">
       ${time ? `<span>${escapeHtml(time)}</span>` : ""}
       ${ip ? `<span>IP 属地 ${escapeHtml(ip)}</span>` : ""}

@@ -46,13 +46,13 @@
             { reviewId: 9102, nickName: "半页笔记", userId: 1003, content: "这句话后面还会出现一次，注意看。", createTime: "2026-11-08 08:02:00" }
           ]
         },
-        content: "「灯还亮着，人就不算走远。」——这句我要抄下来。", createTime: "2026-11-07 19:20:00", ipAddress: "上海", likeCount: 402 },
+        imageList: [ { url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Crect width='160' height='160' fill='%2383c3fe'/%3E%3Ccircle cx='80' cy='80' r='42' fill='%23ffffff' opacity='.65'/%3E%3C/svg%3E" }, { url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Crect width='160' height='160' fill='%2378cf70'/%3E%3Crect x='40' y='40' width='80' height='80' fill='%23ffffff' opacity='.6'/%3E%3C/svg%3E" } ], content: "「灯还亮着，人就不算走远。」——这句我要抄下来。", createTime: "2026-11-07 19:20:00", ipAddress: "上海", likeCount: 402 },
       { reviewId: 9002, userId: 1005, nickName: "茶渍", avatar: "", level: 4, floor: 89, replyNum: 2,
         quoteReviewList: [
           { reviewId: 9201, nickName: "望北", userId: 1006, content: "我也是，看到这里停了好久。", createTime: "2026-11-08 10:02:00", quoteNickName: "茶渍" },
           { reviewId: 9202, nickName: "salt", userId: 1007, content: "同感，这句算是全书题眼了。", createTime: "2026-11-08 11:40:00" }
         ],
-        content: "整章最好的一句，后面三章都在回答这句话。", createTime: "2026-11-08 09:12:33", ipAddress: "江苏", likeCount: 91 },
+        content: "整章最好的一句，后面三章都在回答这句话。<img src=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='120'%3E%3Crect width='160' height='120' fill='%23f0c36d'/%3E%3Ctext x='80' y='70' font-size='20' text-anchor='middle' fill='%23ffffff'%3Equote%3C/text%3E%3C/svg%3E\" />", createTime: "2026-11-08 09:12:33", ipAddress: "江苏", likeCount: 91 },
       { reviewId: 9006, userId: 1006, nickName: "望北", avatar: "", level: 2, floor: 90, quoteReviewTotal: 1,
         quoteReviewList: { list: [ { reviewId: 9301, nickName: "无名氏", userId: 1008, content: "同问，蹲一个解释。", createTime: "2026-11-09 09:00:00" } ] },
         content: "第一次看的时候没注意，二刷才懂。", createTime: "2026-11-08 21:40:12", ipAddress: "四川", likeCount: 12 },
@@ -117,6 +117,19 @@
         if (repFire()) mo4.disconnect();
       });
       mo4.observe(document.documentElement, { childList: true, subtree: true });
+    }
+  }
+  if (location.search.indexOf("big") !== -1) {
+    var bigFire = function () {
+      var t = document.querySelector(".cxq-thumb");
+      if (t) { t.click(); return true; }
+      return false;
+    };
+    if (!bigFire()) {
+      var mo5 = new MutationObserver(function () {
+        if (bigFire()) mo5.disconnect();
+      });
+      mo5.observe(document.documentElement, { childList: true, subtree: true });
     }
   }
   if (location.search.indexOf("bottom") !== -1) {
