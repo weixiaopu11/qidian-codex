@@ -446,6 +446,35 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
 #${ROOT_ID} .cxq-cm-foot svg{width:10px;height:10px;}
 #${ROOT_ID} .cxq-cm-like{display:inline-flex;align-items:center;gap:3px;}
 
+/* 楼中楼回复 */
+#${ROOT_ID} .cxq-cm-replies{margin-top:6px;padding-left:9px;border-left:2px solid var(--cx-border-soft);}
+#${ROOT_ID} .cxq-cm-replies:empty{display:none;}
+#${ROOT_ID} .cxq-reply{display:flex;gap:6px;padding:5px 0;}
+#${ROOT_ID} .cxq-reply-av{
+  width:18px;height:18px;flex:0 0 18px;border-radius:50%;object-fit:cover;overflow:hidden;
+  background:var(--cx-chip-bg);display:grid;place-items:center;
+  font-size:9.5px;font-weight:600;color:var(--cx-text-dim);
+}
+#${ROOT_ID} .cxq-reply-body{flex:1;min-width:0;}
+#${ROOT_ID} .cxq-reply-top{display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+#${ROOT_ID} .cxq-reply-nick{font-size:11.5px;font-weight:600;color:var(--cx-text-secondary);}
+#${ROOT_ID} .cxq-reply-to{font-size:11px;color:var(--cx-text-faint);}
+#${ROOT_ID} .cxq-reply-time{font-size:10.5px;color:var(--cx-text-faint);}
+#${ROOT_ID} .cxq-reply-text{
+  margin-top:2px;font-size:12.5px;line-height:1.6;color:var(--cx-text-dim);
+  white-space:pre-wrap;word-break:break-word;
+}
+#${ROOT_ID} .cxq-reply-toggle{margin-top:2px;padding:1px 0;font-size:11.5px;color:var(--cx-blue);opacity:.85;}
+#${ROOT_ID} .cxq-reply-toggle:hover{opacity:1;}
+#${ROOT_ID} .cxq-reply-empty{padding:3px 0;font-size:11.5px;color:var(--cx-text-faint);}
+#${ROOT_ID} .cxq-load-more{
+  width:100%;height:30px;margin:12px 0 4px;border-radius:8px;
+  border:1px solid var(--cx-border);background:var(--cx-bg-raised);
+  font-size:12px;color:var(--cx-text-secondary);transition:.15s;
+}
+#${ROOT_ID} .cxq-load-more:hover:not(:disabled){background:var(--cx-btn-hover);color:var(--cx-text);}
+#${ROOT_ID} .cxq-load-more:disabled{opacity:.6;cursor:default;}
+
 #${ROOT_ID} .cxq-empty{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:6px;padding:46px 10px;font-size:12.5px;color:var(--cx-text-faint);text-align:center;
@@ -771,7 +800,10 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
     segOf: [],           // 每段对应的 segmentId
     summary: new Map(),  // segmentId -> { reviewNum, isHotSegment, quoteContent }
     active: -1,
-    reviewCache: new Map(),
+    reviewCache: new Map(),   // segmentId -> 一级评论（第 1 页）
+    replyCache: new Map(),    // 评论 key -> 楼中楼回复
+    reviewList: [],           // 当前面板已渲染的一级评论
+    paging: { seg: 0, page: 1, total: 0 },
     totalReview: 0,
     root: null,
     els: {}
@@ -1088,6 +1120,19 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
       if (idx >= 0) openPanel(idx, { scroll: false });
     });
 
+    // 楼中楼展开 / 评论翻页（事件委托，列表重绘后依然有效）
+    if (state.els.reviews) {
+      state.els.reviews.addEventListener("click", (e) => {
+        const toggle = e.target.closest(".cxq-reply-toggle");
+        if (toggle) {
+          e.stopPropagation();
+          toggleReplies(toggle);
+          return;
+        }
+        if (e.target.closest("#cxq-load-more")) loadMoreReviews();
+      });
+    }
+
     // 假输入框：能打字、能回车清空，但不会真的发出去
     const input = state.els.input;
     if (input) {
@@ -1212,10 +1257,13 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
 
   async function loadReviews(seg) {
     const box = state.els.reviews;
+    state.paging = { seg, page: 1, total: 0 };
+
     if (state.reviewCache.has(seg)) {
       const cached = state.reviewCache.get(seg);
+      const info = state.summary.get(seg);
       if (!cached.length) return renderEmpty("暂无批注");
-      return renderReviews(cached);
+      return renderReviews(cached, (info && info.reviewNum) || 0);
     }
 
     box.innerHTML = `<div class="cxq-skel w60"></div><div class="cxq-skel w90"></div><div class="cxq-skel w75"></div><div class="cxq-skel w90"></div><div class="cxq-skel w60"></div>`;
@@ -1236,19 +1284,203 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
         const total = Math.max(pickTotal(json), list.length, (info && info.reviewNum) || 0);
         if (total) state.els.panelCount.textContent = `${total} 条`;
         if (!list.length) renderEmpty("暂无批注");
-        else renderReviews(list);
+        else renderReviews(list, total);
       }
     } catch (err) {
       renderError(err);
     }
   }
 
-  function renderReviews(list) {
+  function renderReviews(list, total) {
+    state.reviewList = list;
+    state.paging.total = Math.max(total || 0, list.length);
     const box = state.els.reviews;
-    box.innerHTML = list.map(reviewHtml).join("");
+    box.innerHTML =
+      list.map((cm, i) => reviewHtml(cm, i)).join("") +
+      loadMoreHtml(list.length, state.paging.total);
   }
 
-  function reviewHtml(cm) {
+  function loadMoreHtml(shown, total) {
+    if (!total || shown >= total) return "";
+    return `<button class="cxq-load-more" id="cxq-load-more">加载更多（${shown}/${total}）</button>`;
+  }
+
+  /* ---- 楼中楼（折叠回复） ---- */
+
+  function asArray(v) {
+    if (!v) return [];
+    return Array.isArray(v) ? v : [v];
+  }
+
+  // 起点不同接口版本里，回复可能挂在任一字段下，这里全收一遍再按 id 去重
+  function extractReplies(cm) {
+    const out = [];
+    ["quoteReviewList", "quoteReviews", "replyList", "replies", "children", "subReviews", "subReviewList"].forEach((k) => {
+      asArray(cm[k]).forEach((r) => {
+        if (r && typeof r === "object" && (r.content || r.text)) out.push(r);
+      });
+    });
+    const seen = new Set();
+    return out.filter((r) => {
+      const id = r.reviewId ?? r.id ?? "";
+      if (id && seen.has(id)) return false;
+      if (id) seen.add(id);
+      return true;
+    });
+  }
+
+  function replyCount(cm, inline) {
+    const raw = cm.replyNum ?? cm.replyCount ?? cm.commentNum ?? cm.subReviewNum ?? cm.quoteReviewNum ?? 0;
+    const n = Number(raw);
+    return Math.max(Number.isFinite(n) ? n : 0, inline.length);
+  }
+
+  function replyBlock(cm, idx) {
+    const inline = extractReplies(cm);
+    const count = replyCount(cm, inline);
+    if (!count) return "";
+    const rid = cm.reviewId ?? cm.id ?? cm.review_id ?? "";
+    const key = rid ? String(rid) : `i${idx}`;
+    if (inline.length) state.replyCache.set(key, inline);
+    return `<div class="cxq-cm-replies" data-key="${escapeHtml(key)}" data-count="${count}" data-open="0"></div>
+      <button class="cxq-reply-toggle" data-key="${escapeHtml(key)}" data-idx="${idx}">展开 ${count} 条回复</button>`;
+  }
+
+  function replyHtml(r) {
+    const nick = escapeHtml(r.nickName || r.userName || "书友");
+    const content = escapeHtml(r.content || r.text || "").replace(/\n/g, "<br>");
+    const to = r.quoteNickName || r.replyNickName || r.toNickName || (r.quoteReview && r.quoteReview.nickName) || "";
+    const time = formatTime(r.createTime || r.time || r.createdAt);
+    const avatar = r.avatar || r.avatarUrl || "";
+    const avInner = avatar
+      ? `<img src="${escapeHtml(avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">`
+      : nick.slice(0, 1);
+    return `<div class="cxq-reply">
+  <div class="cxq-reply-av">${avInner}</div>
+  <div class="cxq-reply-body">
+    <div class="cxq-reply-top">
+      <span class="cxq-reply-nick">${nick}</span>
+      ${to ? `<span class="cxq-reply-to">回复 ${escapeHtml(to)}</span>` : ""}
+      ${time ? `<span class="cxq-reply-time">${escapeHtml(time)}</span>` : ""}
+    </div>
+    <div class="cxq-reply-text">${content}</div>
+  </div>
+</div>`;
+  }
+
+  async function toggleReplies(btn) {
+    const body = btn.closest(".cxq-cm-body");
+    const box = body && body.querySelector(".cxq-cm-replies");
+    if (!box) return;
+    const key = box.dataset.key;
+    const count = box.dataset.count;
+
+    if (box.dataset.open === "1") {
+      box.innerHTML = "";
+      box.dataset.open = "0";
+      btn.textContent = `展开 ${count} 条回复`;
+      return;
+    }
+
+    box.dataset.open = "1";
+    btn.textContent = "收起";
+
+    const cached = state.replyCache.get(key);
+    if (cached && cached.length) {
+      box.innerHTML = cached.map(replyHtml).join("");
+      return;
+    }
+
+    box.innerHTML = `<div class="cxq-skel w90" style="margin:4px 0"></div>`;
+    const list = await fetchReplies(btn.dataset.idx, key);
+    if (box.dataset.open !== "1") return;
+    state.replyCache.set(key, list);
+    if (!list.length) {
+      box.innerHTML = `<div class="cxq-reply-empty">暂无回复</div>`;
+      return;
+    }
+    box.innerHTML = list.map(replyHtml).join("");
+  }
+
+  // 回复接口在不同版本叫法不一，逐个尝试
+  async function fetchReplies(idx, key) {
+    const cm = state.reviewList[Number(idx)] || {};
+    const rid = cm.reviewId ?? cm.id ?? cm.review_id ?? (/^\d+$/.test(key) ? key : "");
+    if (!rid) return [];
+    const attempts = [
+      ["quoteReviewList", { reviewId: rid }],
+      ["quoteReviewList", { quoteReviewId: rid }],
+      ["reviewList", { quoteReviewId: rid }]
+    ];
+    for (const [path, extra] of attempts) {
+      try {
+        const json = await qidianApi(
+          path,
+          Object.assign(
+            {
+              bookId: state.meta.bookId,
+              chapterId: state.meta.chapterId,
+              segmentId: state.paging.seg || "",
+              page: 1,
+              pageSize: 30,
+              type: 2
+            },
+            extra
+          )
+        );
+        const list = pickList(json).filter((x) => x && (x.content || x.text));
+        if (list.length) return list;
+      } catch {
+        /* 换下一个参数名再试 */
+      }
+    }
+    return [];
+  }
+
+  /* ---- 一级评论翻页 ---- */
+
+  async function loadMoreReviews() {
+    const btn = $("#cxq-load-more", state.els.reviews);
+    const seg = state.paging.seg;
+    if (!btn || !seg || btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = "加载中…";
+
+    const next = state.paging.page + 1;
+    try {
+      const json = await qidianApi("reviewList", {
+        bookId: state.meta.bookId,
+        chapterId: state.meta.chapterId,
+        page: next,
+        pageSize: 30,
+        segmentId: seg,
+        type: 2
+      });
+      if (state.paging.seg !== seg) return;
+      const list = pickList(json);
+      if (!list.length) {
+        btn.textContent = "没有更多了";
+        return;
+      }
+      state.paging.page = next;
+      const base = state.reviewList.length;
+      state.reviewList = state.reviewList.concat(list);
+      const total = Math.max(pickTotal(json), state.reviewList.length, state.paging.total);
+      state.paging.total = total;
+      btn.remove();
+      state.els.reviews.insertAdjacentHTML(
+        "beforeend",
+        list.map((cm, j) => reviewHtml(cm, base + j)).join("") +
+          loadMoreHtml(state.reviewList.length, total)
+      );
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = "加载更多";
+      toast("加载失败");
+    }
+  }
+
+  function reviewHtml(cm, idx) {
     const nick = escapeHtml(cm.nickName || cm.userName || "书友");
     const uid = cm.userId || cm.user_id;
     const avatar = cm.avatar || cm.avatarUrl || "";
@@ -1279,6 +1511,7 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
       ${ip ? `<span>IP 属地 ${escapeHtml(ip)}</span>` : ""}
       ${likes ? `<span class="cxq-cm-like">${ICONS.like}${likes}</span>` : ""}
     </div>
+    ${replyBlock(cm, idx)}
   </div>
 </div>`;
   }

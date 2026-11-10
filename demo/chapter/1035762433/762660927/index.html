@@ -34,20 +34,35 @@
 
   const LISTS = {
     2: [
-      { userId: 1001, nickName: "夜航船", avatar: "", level: 5, floor: 12, content: "这句写得真好，雨落在铁皮棚上的声音一下就出来了。", createTime: "2026-11-08 22:14:03", ipAddress: "浙江", likeCount: 128 },
-      { userId: 1002, nickName: "深水鱼", avatar: "", level: 3, floor: 13, content: "同意，前面铺垫了那么久的闷热，到这里终于落了雨。\n读起来有种松了口气的感觉。", createTime: "2026-11-08 23:02:41", ipAddress: "广东", likeCount: 36 },
-      { userId: 1003, nickName: "半页笔记", avatar: "", level: 6, floor: 14, content: "我倒是觉得这段有点刻意，雨来得太准了。", createTime: "2026-11-09 08:31:10", ipAddress: "北京", likeCount: 7 }
+      { reviewId: 9003, userId: 1001, nickName: "夜航船", avatar: "", level: 5, floor: 12, replyNum: 0, content: "这句写得真好，雨落在铁皮棚上的声音一下就出来了。", createTime: "2026-11-08 22:14:03", ipAddress: "浙江", likeCount: 128 },
+      { reviewId: 9004, userId: 1002, nickName: "深水鱼", avatar: "", level: 3, floor: 13, replyNum: 0, content: "同意，前面铺垫了那么久的闷热，到这里终于落了雨。\n读起来有种松了口气的感觉。", createTime: "2026-11-08 23:02:41", ipAddress: "广东", likeCount: 36 },
+      { reviewId: 9005, userId: 1003, nickName: "半页笔记", avatar: "", level: 6, floor: 14, replyNum: 0, content: "我倒是觉得这段有点刻意，雨来得太准了。", createTime: "2026-11-09 08:31:10", ipAddress: "北京", likeCount: 7 }
     ],
     5: [
-      { userId: 1004, nickName: "旧码头", avatar: "", level: 7, floor: 88, content: "「灯还亮着，人就不算走远。」——这句我要抄下来。", createTime: "2026-11-07 19:20:00", ipAddress: "上海", likeCount: 402 },
-      { userId: 1005, nickName: "茶渍", avatar: "", level: 4, floor: 89, content: "整章最好的一句，后面三章都在回答这句话。", createTime: "2026-11-08 09:12:33", ipAddress: "江苏", likeCount: 91 },
-      { userId: 1006, nickName: "望北", avatar: "", level: 2, floor: 90, content: "第一次看的时候没注意，二刷才懂。", createTime: "2026-11-08 21:40:12", ipAddress: "四川", likeCount: 12 },
-      { userId: 1007, nickName: "salt", avatar: "", level: 5, floor: 91, content: "作者的短句节奏一直很稳。", createTime: "2026-11-09 07:05:59", ipAddress: "海外", likeCount: 4 }
+      { reviewId: 9001, userId: 1004, nickName: "旧码头", avatar: "", level: 7, floor: 88, replyNum: 2, content: "「灯还亮着，人就不算走远。」——这句我要抄下来。", createTime: "2026-11-07 19:20:00", ipAddress: "上海", likeCount: 402 },
+      { reviewId: 9002, userId: 1005, nickName: "茶渍", avatar: "", level: 4, floor: 89, replyNum: 2,
+        quoteReviewList: [
+          { reviewId: 9101, nickName: "望北", userId: 1006, content: "我也是，看到这里停了好久。", createTime: "2026-11-08 10:02:00", quoteNickName: "茶渍" },
+          { reviewId: 9102, nickName: "salt", userId: 1007, content: "同感，这句算是全书题眼了。", createTime: "2026-11-08 11:40:00" }
+        ],
+        content: "整章最好的一句，后面三章都在回答这句话。", createTime: "2026-11-08 09:12:33", ipAddress: "江苏", likeCount: 91 },
+      { reviewId: 9006, userId: 1006, nickName: "望北", avatar: "", level: 2, floor: 90, replyNum: 0, content: "第一次看的时候没注意，二刷才懂。", createTime: "2026-11-08 21:40:12", ipAddress: "四川", likeCount: 12 },
+      { reviewId: 9007, userId: 1007, nickName: "salt", avatar: "", level: 5, floor: 91, replyNum: 0, content: "作者的短句节奏一直很稳。", createTime: "2026-11-09 07:05:59", ipAddress: "海外", likeCount: 4 },
+      { reviewId: 9008, userId: 1009, nickName: "长夜", avatar: "", level: 3, floor: 92, replyNum: 0, content: "第二遍读才发现开头那句是伏笔。", createTime: "2026-11-09 12:20:00", ipAddress: "湖南", likeCount: 3 },
+      { reviewId: 9009, userId: 1010, nickName: "匿名读者", avatar: "", level: 1, floor: 93, replyNum: 0, content: "码住，慢慢看。", createTime: "2026-11-09 15:40:00", ipAddress: "山东", likeCount: 0 }
     ],
     7: [
-      { userId: 1008, nickName: "无名氏", avatar: "", level: 1, floor: 2, content: "这里的视角切换有点突然。", createTime: "2026-11-09 10:00:00", ipAddress: "湖北", likeCount: 1 }
+      { reviewId: 9010, userId: 1008, nickName: "无名氏", avatar: "", level: 1, floor: 2, replyNum: 0, content: "这里的视角切换有点突然。", createTime: "2026-11-09 10:00:00", ipAddress: "湖北", likeCount: 1 }
     ],
     11: []
+  };
+
+  // 楼中楼回复（按 reviewId 拉取）
+  const REPLIES = {
+    9001: [
+      { reviewId: 9201, userId: 1002, nickName: "深水鱼", avatar: "", content: "抄了+1，已经写在便利贴上贴显示器了。", createTime: "2026-11-07 21:10:00" },
+      { reviewId: 9202, userId: 1003, nickName: "半页笔记", avatar: "", content: "这句话后面还会出现一次，注意看。", createTime: "2026-11-08 08:02:00" }
+    ]
   };
 
   function jsonRes(obj) {
@@ -82,6 +97,20 @@
       mo.observe(document.documentElement, { childList: true, subtree: true });
     }
   }
+  if (location.search.indexOf("replies") !== -1) {
+    var repIdx = Number((location.search.match(/replies=(\d+)/) || [])[1] || 1) - 1;
+    var repFire = function () {
+      var b = document.querySelectorAll(".cxq-reply-toggle")[repIdx];
+      if (b) { b.click(); return true; }
+      return false;
+    };
+    if (!repFire()) {
+      var mo4 = new MutationObserver(function () {
+        if (repFire()) mo4.disconnect();
+      });
+      mo4.observe(document.documentElement, { childList: true, subtree: true });
+    }
+  }
   if (location.search.indexOf("bottom") !== -1) {
     var bottomFire = function () {
       var sc = document.querySelector("#cxq-scroll");
@@ -112,12 +141,23 @@
   window.fetch = function (url) {
     const u = String(url);
     if (u.indexOf("reviewSummary") !== -1) return jsonRes(SUMMARY);
-    if (u.indexOf("reviewList") !== -1) {
-      const m = u.match(/segmentId=(\d+)/);
-      const seg = m ? Number(m[1]) : 0;
-      const list = LISTS[seg] || [];
+
+    // 注意：quoteReviewList 包含 reviewList 子串，必须先判断
+    if (u.indexOf("quoteReviewList") !== -1) {
+      const id = Number((u.match(/reviewId=(\d+)/) || [])[1] || 0);
+      const list = REPLIES[id] || [];
       return jsonRes({ code: 0, data: { total: list.length, list: list } });
     }
+
+    if (u.indexOf("reviewList") !== -1) {
+      const seg = Number((u.match(/segmentId=(\d+)/) || [])[1] || 0);
+      const page = Number((u.match(/page=(\d+)/) || [])[1] || 1);
+      const pageSize = 3;
+      const all = LISTS[seg] || [];
+      const list = all.slice((page - 1) * pageSize, page * pageSize);
+      return jsonRes({ code: 0, data: { total: all.length, list: list } });
+    }
+
     return jsonRes({ code: 0, data: {} });
   };
 </script>
