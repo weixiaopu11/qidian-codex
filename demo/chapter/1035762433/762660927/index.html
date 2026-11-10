@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第一章 夜航_测试书_起点中文网</title>
+<style>
+  body{margin:0;background:#fff;font-family:-apple-system,"PingFang SC",sans-serif;color:#222;}
+  #r-breadcrumbs{padding:12px 16px;font-size:13px;}
+  #r-breadcrumbs a{color:#333;text-decoration:none;}
+  main{padding:20px;line-height:2;font-size:18px;max-width:760px;margin:0 auto;}
+  h1{font-size:22px;padding:0 20px;}
+  .nav{padding:24px;display:flex;gap:20px;justify-content:center;}
+  .nav a{color:#0a7;text-decoration:none;}
+  /* 截图/测试时去掉面板宽度过渡，保证一次成型 */
+  #cxq-root .cxq-panel{transition:none!important;}
+</style>
+<script>
+  /* ---------------- 模拟起点接口 ---------------- */
+  document.cookie = "_csrfToken=demo-token-123";
+
+  const SUMMARY = {
+    code: 0,
+    data: {
+      list: [
+        { segmentId: 0, reviewNum: 0, isHotSegment: false },          // 章节级，应被忽略
+        { segmentId: 2, reviewNum: 42, isHotSegment: true },
+        { segmentId: 5, reviewNum: 128, isHotSegment: true },
+        { segmentId: 7, reviewNum: 9, isHotSegment: false },
+        { segmentId: 11, reviewNum: 3, isHotSegment: false }
+      ]
+    }
+  };
+
+  const LISTS = {
+    2: [
+      { userId: 1001, nickName: "夜航船", avatar: "", level: 5, floor: 12, content: "这句写得真好，雨落在铁皮棚上的声音一下就出来了。", createTime: "2026-11-08 22:14:03", ipAddress: "浙江", likeCount: 128 },
+      { userId: 1002, nickName: "深水鱼", avatar: "", level: 3, floor: 13, content: "同意，前面铺垫了那么久的闷热，到这里终于落了雨。\n读起来有种松了口气的感觉。", createTime: "2026-11-08 23:02:41", ipAddress: "广东", likeCount: 36 },
+      { userId: 1003, nickName: "半页笔记", avatar: "", level: 6, floor: 14, content: "我倒是觉得这段有点刻意，雨来得太准了。", createTime: "2026-11-09 08:31:10", ipAddress: "北京", likeCount: 7 }
+    ],
+    5: [
+      { userId: 1004, nickName: "旧码头", avatar: "", level: 7, floor: 88, content: "「灯还亮着，人就不算走远。」——这句我要抄下来。", createTime: "2026-11-07 19:20:00", ipAddress: "上海", likeCount: 402 },
+      { userId: 1005, nickName: "茶渍", avatar: "", level: 4, floor: 89, content: "整章最好的一句，后面三章都在回答这句话。", createTime: "2026-11-08 09:12:33", ipAddress: "江苏", likeCount: 91 },
+      { userId: 1006, nickName: "望北", avatar: "", level: 2, floor: 90, content: "第一次看的时候没注意，二刷才懂。", createTime: "2026-11-08 21:40:12", ipAddress: "四川", likeCount: 12 },
+      { userId: 1007, nickName: "salt", avatar: "", level: 5, floor: 91, content: "作者的短句节奏一直很稳。", createTime: "2026-11-09 07:05:59", ipAddress: "海外", likeCount: 4 }
+    ],
+    7: [
+      { userId: 1008, nickName: "无名氏", avatar: "", level: 1, floor: 2, content: "这里的视角切换有点突然。", createTime: "2026-11-09 10:00:00", ipAddress: "湖北", likeCount: 1 }
+    ],
+    11: []
+  };
+
+  function jsonRes(obj) {
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(JSON.stringify(obj)),
+      json: () => Promise.resolve(obj)
+    });
+  }
+
+  /* 测试钩子：?light 浅色主题 / ?panel 自动点开第 5 段的段评 / ?click=N 点开第 N 段 */
+  if (location.search.indexOf("light") !== -1) {
+    localStorage.setItem("cxq:settings:v2", JSON.stringify({ theme: "light", fontSize: 13.5, lineHeight: 1.75, width: 760, font: "sans", rail: true }));
+  }
+  if (location.search.indexOf("dark") !== -1) {
+    localStorage.setItem("cxq:settings:v2", JSON.stringify({ theme: "dark", fontSize: 13.5, lineHeight: 1.75, width: 760, font: "sans", rail: true }));
+  }
+  var wantClick = location.search.indexOf("panel") !== -1 ? 4 : -1;
+  var cm = location.search.match(/click=(\d+)/);
+  if (cm) wantClick = +cm[1];
+  if (wantClick >= 0) {
+    var fire = function () {
+      var ps = document.querySelectorAll(".cxq-p");
+      if (ps[wantClick]) { ps[wantClick].click(); return true; }
+      return false;
+    };
+    if (!fire()) {
+      var mo = new MutationObserver(function () {
+        if (fire()) mo.disconnect();
+      });
+      mo.observe(document.documentElement, { childList: true, subtree: true });
+    }
+  }
+  if (location.search.indexOf("bottom") !== -1) {
+    var bottomFire = function () {
+      var sc = document.querySelector("#cxq-scroll");
+      if (sc) { sc.scrollTop = sc.scrollHeight; return true; }
+      return false;
+    };
+    if (!bottomFire()) {
+      var mo3 = new MutationObserver(function () {
+        if (bottomFire()) mo3.disconnect();
+      });
+      mo3.observe(document.documentElement, { childList: true, subtree: true });
+    }
+  }
+  if (location.search.indexOf("cfg") !== -1) {
+    var cfgFire = function () {
+      var b = document.querySelector("#cxq-settings-btn");
+      if (b) { b.click(); return true; }
+      return false;
+    };
+    if (!cfgFire()) {
+      var mo2 = new MutationObserver(function () {
+        if (cfgFire()) mo2.disconnect();
+      });
+      mo2.observe(document.documentElement, { childList: true, subtree: true });
+    }
+  }
+
+  window.fetch = function (url) {
+    const u = String(url);
+    if (u.indexOf("reviewSummary") !== -1) return jsonRes(SUMMARY);
+    if (u.indexOf("reviewList") !== -1) {
+      const m = u.match(/segmentId=(\d+)/);
+      const seg = m ? Number(m[1]) : 0;
+      const list = LISTS[seg] || [];
+      return jsonRes({ code: 0, data: { total: list.length, list: list } });
+    }
+    return jsonRes({ code: 0, data: {} });
+  };
+</script>
+</head>
+<body>
+
+<div id="r-breadcrumbs">
+  <a href="#">测试书</a>
+</div>
+
+<div id="reader-content">
+  <div class="min-h-100vh relative z-1 bg-inherit">
+    <div>
+      <div class="relative">
+        <div>
+          <main>
+            铁皮棚上的雨是从后半夜开始的。<br><br>
+            起初只是零星几声，像有人在屋顶上撒了一把豆子，很快又没了动静。守夜的人抬起头，看见灯泡周围飞着一圈细小的虫，光被它们撞得有些晃。他把手里的搪瓷缸放到桌上，缸底和桌面碰出一声闷响。<br><br>
+            风从江面过来，带着水汽，也带着柴油味。远处那条船没有开灯，只在雾里露出一个模糊的轮廓，像一块被人随手搁在水上的石头。<br><br>
+            “灯还亮着，人就不算走远。”<br><br>
+            老人说这句话的时候，眼睛没有看他，而是看着窗外那条看不见的江。守夜的人没有接话。他知道老人不是在跟他说话，也可能不是在跟任何人说话。<br><br>
+            雨忽然大了起来。铁皮被敲得嗡嗡作响，整间屋子都在震动，仿佛随时会被这片雨抬起来，送到江心去。守夜的人站起来，去关那扇一直没有关严的窗。<br><br>
+            窗框卡住了。他用了点力，玻璃上自己的影子也跟着用力。就在那一瞬间，他看见江对岸有一点黄光闪了一下，随即熄灭。<br><br>
+            他愣在那里，手还按在窗上。<br><br>
+            “看见了？”老人在背后问。<br><br>
+            “看见了。”<br><br>
+            老人没有再问下去。他慢慢地把搪瓷缸端起来，喝了一口已经凉透的茶，然后把缸放回原处，动作和刚才一模一样，仿佛这中间什么都没有发生过。<br><br>
+            雨声渐渐低下去。守夜的人关好窗，回到桌边坐下，把台灯往自己这边挪了挪。灯光照亮了一小片桌面，桌面上有五道被烟头烫出来的痕，一圈一圈，像很浅的涟漪。<br><br>
+            他忽然想起自己已经在这里守了多少个夜。这个数字在脑子里转了一下，没有停留，很快就散了。<br><br>
+            天快亮的时候，雨停了。江面上浮着一层白气，缓缓地往东边推。老人已经睡着了，呼吸很轻。守夜的人把外套披在他身上，然后走到门口，推开那扇门。<br><br>
+            外面的空气凉得让人清醒。他站在台阶上，看着江，看了很久。<br><br>
+            第一条船从雾里出来的时候，他听见自己心里有个声音说：今天可以走了。<br><br>
+            但他没有动。
+          </main>
+        </div>
+        <h1>第一章 夜航</h1>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="nav">
+  <a href="/chapter/1035762433/762660900/">上一章</a>
+  <a href="/chapter/1035762433/762660955/">下一章</a>
+</div>
+
+<script src="../../../../qidian-codex-reader.user.js"></script>
+</body>
+</html>
