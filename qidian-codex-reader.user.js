@@ -1279,6 +1279,15 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
       });
       const list = pickList(json);
       state.reviewCache.set(seg, list);
+      // 打印一条样本，方便确认楼中楼字段的真实名字
+      if (!state.loggedSample && list.length) {
+        state.loggedSample = true;
+        try {
+          console.log("[Codex Reader] reviewList 样本：", JSON.parse(JSON.stringify(list[0])));
+        } catch {
+          console.log("[Codex Reader] reviewList 样本：", list[0]);
+        }
+      }
       if (state.active >= 0 && state.segOf[state.active] === seg) {
         const info = state.summary.get(seg);
         const total = Math.max(pickTotal(json), list.length, (info && info.reviewNum) || 0);
@@ -1312,27 +1321,84 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
     return Array.isArray(v) ? v : [v];
   }
 
-  // 起点不同接口版本里，回复可能挂在任一字段下，这里全收一遍再按 id 去重
+  // 从各种可能的形状里取出文本
+  function textOf(o) {
+    if (!o || typeof o !== "object") return "";
+    const t = o.content ?? o.text ?? o.replyContent ?? o.contentText ?? o.body ?? o.message ?? "";
+    return typeof t === "string" ? t.trim() : "";
+  }
+
+  // quoteReview / quoteContent 是“被引用的父评论”，不是回复，排除
+  const NOT_REPLY_KEY = /^(quoteContent|quoteNickName|quoteUser|quoteUserName|quoteUserId|quoteReview|quote|review)$/i;
+  function isReplyKey(k) {
+    if (NOT_REPLY_KEY.test(k)) return false;
+    return /reply|sub|child|quote/i.test(k);
+  }
+
+  // 递归收集数组，兼容 { list: [...] } / { data: [...] } 这类包一层的情况
+  function collectReplyArray(v, out, depth) {
+    if (!v || depth > 3) return;
+    if (Array.isArray(v)) {
+      v.forEach((it) => {
+        if (it && typeof it === "object" && textOf(it)) out.push(it);
+      });
+      return;
+    }
+    if (typeof v === "object") {
+      ["list", "records", "rows", "items", "data", "quoteReviewList", "replyList"].forEach((k) => {
+        collectReplyArray(v[k], out, depth + 1);
+      });
+    }
+  }
+
+  // 递归找回复数组（有些版本把回复塞在 reviewExt / stat 这类子对象里）
+  const SKIP_OBJ = /^(user|userInfo|book|bookInfo|chapter|author|quoteReview|quote)$/i;
+
+  function walkReplyObjects(obj, depth, out) {
+    if (!obj || typeof obj !== "object" || depth > 2) return;
+    Object.keys(obj).forEach((k) => {
+      const v = obj[k];
+      if (!v || typeof v !== "object") return;
+      if (isReplyKey(k)) {
+        collectReplyArray(v, out, 0);
+        return;
+      }
+      if (SKIP_OBJ.test(k)) return;
+      walkReplyObjects(v, depth + 1, out);
+    });
+  }
+
   function extractReplies(cm) {
     const out = [];
-    ["quoteReviewList", "quoteReviews", "replyList", "replies", "children", "subReviews", "subReviewList"].forEach((k) => {
-      asArray(cm[k]).forEach((r) => {
-        if (r && typeof r === "object" && (r.content || r.text)) out.push(r);
-      });
-    });
+    walkReplyObjects(cm, 0, out);
+    const parentId = cm.reviewId ?? cm.id ?? cm.review_id ?? null;
     const seen = new Set();
     return out.filter((r) => {
       const id = r.reviewId ?? r.id ?? "";
+      if (id && parentId && String(id) === String(parentId)) return false;
       if (id && seen.has(id)) return false;
       if (id) seen.add(id);
       return true;
     });
   }
 
+  // 只要字段名像“回复数”，不管叫 replyNum / quoteReviewNum / subCount 都认
+  function collectCount(obj, depth, acc) {
+    if (!obj || typeof obj !== "object" || depth > 2) return acc;
+    Object.keys(obj).forEach((k) => {
+      const v = obj[k];
+      if (typeof v === "number" && isReplyKey(k) && /(num|count|total|size|qty)$/i.test(k)) {
+        if (v > acc.n) acc.n = v;
+      } else if (v && typeof v === "object" && !Array.isArray(v) && !SKIP_OBJ.test(k)) {
+        collectCount(v, depth + 1, acc);
+      }
+    });
+    return acc;
+  }
+
   function replyCount(cm, inline) {
-    const raw = cm.replyNum ?? cm.replyCount ?? cm.commentNum ?? cm.subReviewNum ?? cm.quoteReviewNum ?? 0;
-    const n = Number(raw);
-    return Math.max(Number.isFinite(n) ? n : 0, inline.length);
+    const acc = collectCount(cm, 0, { n: 0 });
+    return Math.max(acc.n, inline.length);
   }
 
   function replyBlock(cm, idx) {
@@ -1396,42 +1462,69 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
     if (box.dataset.open !== "1") return;
     state.replyCache.set(key, list);
     if (!list.length) {
-      box.innerHTML = `<div class="cxq-reply-empty">暂无回复</div>`;
+      box.innerHTML = `<div class="cxq-reply-empty">未取到回复内容</div>`;
       return;
     }
     box.innerHTML = list.map(replyHtml).join("");
   }
 
-  // 回复接口在不同版本叫法不一，逐个尝试
+  // 从任意层级的返回里捞出回复数组
+  function pickReplyList(json) {
+    const direct = pickList(json).filter((x) => x && typeof x === "object" && textOf(x));
+    if (direct.length) return direct;
+    const found = [];
+    const walk = (o, d) => {
+      if (!o || typeof o !== "object" || d > 3) return;
+      Object.keys(o).forEach((k) => {
+        const v = o[k];
+        if (Array.isArray(v) && v.length && v[0] && typeof v[0] === "object" && textOf(v[0])) {
+          found.push(...v.filter((x) => x && textOf(x)));
+        } else if (v && typeof v === "object") {
+          walk(v, d + 1);
+        }
+      });
+    };
+    walk(json && json.data ? json.data : json, 0);
+    return found;
+  }
+
+  // 回复接口在不同版本叫法不一：挨个试，成功一次后记住组合
   async function fetchReplies(idx, key) {
     const cm = state.reviewList[Number(idx)] || {};
     const rid = cm.reviewId ?? cm.id ?? cm.review_id ?? (/^\d+$/.test(key) ? key : "");
     if (!rid) return [];
+
     const attempts = [
-      ["quoteReviewList", { reviewId: rid }],
-      ["quoteReviewList", { quoteReviewId: rid }],
-      ["reviewList", { quoteReviewId: rid }]
+      ["quoteReviewList", "reviewId"],
+      ["quoteReviewList", "quoteReviewId"],
+      ["reviewList", "quoteReviewId"],
+      ["reviewList", "reviewId"],
+      ["quoteList", "reviewId"],
+      ["replyList", "reviewId"]
     ];
-    for (const [path, extra] of attempts) {
+    if (state.replyApi) attempts.unshift(state.replyApi);
+
+    const base = {
+      bookId: state.meta.bookId,
+      chapterId: state.meta.chapterId,
+      segmentId: state.paging.seg || "",
+      page: 1,
+      pageSize: 30,
+      type: 2
+    };
+
+    for (const [path, param] of attempts) {
       try {
-        const json = await qidianApi(
-          path,
-          Object.assign(
-            {
-              bookId: state.meta.bookId,
-              chapterId: state.meta.chapterId,
-              segmentId: state.paging.seg || "",
-              page: 1,
-              pageSize: 30,
-              type: 2
-            },
-            extra
-          )
-        );
-        const list = pickList(json).filter((x) => x && (x.content || x.text));
-        if (list.length) return list;
+        const params = Object.assign({}, base);
+        params[param] = rid;
+        const json = await qidianApi(path, params);
+        const list = pickReplyList(json).filter((r) => String(r.reviewId ?? r.id ?? "") !== String(rid));
+        if (list.length) {
+          state.replyApi = [path, param];
+          return list;
+        }
       } catch {
-        /* 换下一个参数名再试 */
+        /* 换下一个组合再试 */
       }
     }
     return [];
