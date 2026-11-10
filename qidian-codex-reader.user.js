@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         起点读书 · Codex 阅读器
 // @namespace    https://www.qidian.com/
-// @version      0.2.0
+// @version      0.2.1
 // @description  把起点章节页伪装成 Codex 桌面端工作界面（左侧会话列表 / 中间正文 / 底部输入框），点击段落可在右侧查看批注。
 // @author       you
 // @match        https://www.qidian.com/chapter/*
@@ -1470,40 +1470,79 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
 
   /* ---- 评论配图 ---- */
 
-  // 从 <img> 里抽图，同时把 HTML 洗成纯文本（有些接口 content 带 <br>/<p>）
-  function cleanContent(raw) {
-    let s = String(raw ?? "");
-    const imgs = [];
-    s = s.replace(/<img\b[^>]*>/gi, (tag) => {
-      const m = tag.match(/\bsrc\s*=\s*["']([^"']+)["']/i) || tag.match(/\bdata-src\s*=\s*["']([^"']+)["']/i);
-      if (m && m[1]) imgs.push(m[1]);
-      return "";
-    });
-    s = s.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div)>/gi, "\n").replace(/<[^>]+>/g, "");
-    s = s
+  function decodeEntities(s) {
+    return String(s)
       .replace(/&nbsp;/gi, " ")
       .replace(/&lt;/gi, "<")
       .replace(/&gt;/gi, ">")
       .replace(/&quot;/gi, '"')
-      .replace(/&#39;/g, "'")
+      .replace(/&#0*39;|&apos;/gi, "'")
+      .replace(/&#0*34;/g, '"')
       .replace(/&amp;/gi, "&");
+  }
+
+  // 从 <img> 里抽图，同时把 HTML 洗成纯文本
+  // 注意：接口里的 content 有时是转义过的（&lt;img src=&quot;...&quot;&gt;），必须先反解再匹配
+  function cleanContent(raw) {
+    let s = decodeEntities(raw);
+    const imgs = [];
+
+    const takeImg = (tag) => {
+      // 用“同种引号配对”匹配，否则 data:image/svg+xml 里的单引号会把 src 截断
+      const m =
+        tag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i) ||
+        tag.match(/\bdata-src\s*=\s*(?:"([^"]*)"|'([^']*)')/i) ||
+        tag.match(/\bdata-original\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+      const url = m && (m[1] || m[2]);
+      if (url) imgs.push(decodeEntities(url));
+      return "";
+    };
+
+    s = s.replace(/<img\b[^>]*>/gi, takeImg);
+    s = s.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div)>/gi, "\n").replace(/<[^>]*>/g, "");
+    s = s.replace(/&nbsp;/gi, " ").replace(/\u00a0/g, " ");
     return { text: s.replace(/\n{3,}/g, "\n\n").trim(), imgs };
   }
 
   const IMG_FIELDS = ["imageList", "images", "imgList", "imageUrls", "picList", "pics", "picUrls", "attachmentList", "files"];
+  // 头像/挂件不算配图
+  const IMG_SKIP_KEY = /(avatar|icon|head|cover|badge|medal|frame|level|vip)/i;
+  const URL_LIKE = /^((https?:)?\/\/|data:image\/)/i;
+
+  function imageUrlOf(v) {
+    if (typeof v === "string") return URL_LIKE.test(v.trim()) ? v.trim() : "";
+    if (v && typeof v === "object") {
+      const u = v.url || v.src || v.imageUrl || v.imgUrl || v.picUrl || v.path || v.image || v.originalUrl || "";
+      return typeof u === "string" && URL_LIKE.test(u) ? u : "";
+    }
+    return "";
+  }
 
   function collectImages(o) {
     const out = [];
+    if (!o || typeof o !== "object") return out;
+
     IMG_FIELDS.forEach((k) => {
-      asArray(o && o[k]).forEach((it) => {
-        if (typeof it === "string") {
-          if (/^(https?:)?\/\//.test(it) || it.startsWith("data:")) out.push(it);
-        } else if (it && typeof it === "object") {
-          const u = it.url || it.src || it.imageUrl || it.imgUrl || it.picUrl || it.path || it.image || "";
-          if (typeof u === "string" && u) out.push(u);
-        }
+      asArray(o[k]).forEach((it) => {
+        const u = imageUrlOf(it);
+        if (u) out.push(u);
       });
     });
+
+    // 兜底：字段名像图片的，或数组里全是图片链接的，也收
+    Object.keys(o).forEach((k) => {
+      if (IMG_FIELDS.includes(k) || IMG_SKIP_KEY.test(k)) return;
+      const v = o[k];
+      if (typeof v === "string") {
+        if (/img|image|photo|pic/i.test(k) && URL_LIKE.test(v)) out.push(v);
+        return;
+      }
+      if (Array.isArray(v) && v.length && v.length <= 9) {
+        const urls = v.map(imageUrlOf).filter(Boolean);
+        if (urls.length === v.length) out.push(...urls);
+      }
+    });
+
     return out;
   }
 
@@ -1520,7 +1559,7 @@ body.${BODY_LOCK} > *:not(#${ROOT_ID}){display:none!important;}
         (u) =>
           `<button class="cxq-thumb" data-src="${escapeHtml(u)}" type="button"><img src="${escapeHtml(
             u
-          )}" alt="" loading="lazy"></button>`
+          )}" alt="" loading="lazy" onerror="this.parentNode.style.display='none'"></button>`
       )
       .join("")}</div>`;
   }
